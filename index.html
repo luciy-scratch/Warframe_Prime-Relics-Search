@@ -1,4 +1,139 @@
 <!DOCTYPE html>
+<!--
+やあ！こんなところで何をしているんだい？
+リポジトリに用ならこっちだぞ！→ https://github.com/luciy-scratch/Warframe_Prime-Relics-Search
+     ∧__∧
+   ( ´･ω･)
+  ( つ旦と)
+  と__)__)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=============================================================================================================================
+ __      __                _____                                                                                             
+/  \    /  \_____ ________/ ____\___________    _____   ____                                                                 
+\   \/\/   /\__  \\_  __ \   __\\_  __ \__  \  /     \_/ __ \                                                                
+ \        /  / __ \|  | \/|  |   |  | \// __ \|  Y Y  \  ___/                                                                
+  \__/\  /  (____  /__|   |__|   |__|  (____  /__|_|  /\___  >                                                               
+       \/        \/                         \/      \/     \/                                                                
+__________        .__                 __________       .__  .__                  _________                           .__     
+\______   \_______|__| _____   ____   \______   \ ____ |  | |__| ____   ______  /   _____/ ____ _____ _______   ____ |  |__  
+ |     ___/\_  __ \  |/     \_/ __ \   |       _// __ \|  | |  |/ ___\ /  ___/  \_____  \_/ __ \\__  \\_  __ \_/ ___\|  |  \ 
+ |    |     |  | \/  |  Y Y  \  ___/   |    |   \  ___/|  |_|  \  \___ \___ \   /        \  ___/ / __ \|  | \/\  \___|   Y  \
+ |____|     |__|  |__|__|_|  /\___  >  |____|_  /\___  >____/__|\___  >____  > /_______  /\___  >____  /__|    \___  >___|  /
+                           \/     \/          \/     \/             \/     \/          \/     \/     \/            \/     \/ 
+Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんてしないよ)
+=============================================================================================================================
+
+技術スタック
+- CSSユーティリティクラス: Tailwind v4 (CDN)
+- 動的更新(Python処理中の表示処理に限る): HTMX 2.x (CDN)
+- バックエンド(Python): PyScript 2024.11.x (CDN)
+- 画像生成: html-to-image 1.11.11
+
+書いた人
+- 仕様定義: Luciy
+- 主幹エンジニア: CLAUDE CODEさん
+- バックアップ: Luciy
+-->
 <html lang="ja">
 
 <head>
@@ -7,9 +142,9 @@
   <title>Warframe - Prime Relics Search</title>
 
   <!-- ===== Google Fonts =====
-       ui-symbolic     : メインタイトルのみ (デザインアクセント)
-       Source Sans 3: UI 全般 (高視認性サンセリフ)
-       ui-badge Mono: レリックバッジ (等幅 / 文字識別性最大) -->
+       Nova Script    : メインタイトルのみ (デザインアクセント)
+       SUSE, Murecho  : UI全般 Murechoは日本語フォントでSUSEに無い日本語部分を補うために使用
+       SUSE Mono      : レリックバッジ (等幅 / 文字識別性最大) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -145,14 +280,14 @@
 
     <!-- ステータスバー -->
     <div class="flex items-center gap-2 mb-4 px-1">
-      <!-- "STATUS" ラベルは Source Sans 3 -->
+      <!-- "STATUS" ラベルは ui-main -->
       <span class="font-ui-main text-xs tracking-widest text-gray-400 uppercase font-semibold">Status</span>
       <span class="text-gray-300">›</span>
       <span id="status-text" class="font-ui-main text-sm font-semibold text-gray-500">初期化中...</span>
     </div>
 
     <!-- ================================================================
-         凡例: ティア別バッジ色 (Source Sans 3 ラベル)
+         凡例: ティア別バッジ色 (ui-badge)
          ================================================================ -->
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6 px-1">
       <span class="font-ui-main text-xs tracking-widest text-gray-400 uppercase font-semibold">Tier</span>
@@ -174,13 +309,13 @@
 
     <!-- ── パネル 1 ── -->
     <section class="mb-6 pb-6 border-b border-gray-200">
-      <!-- "SEARCH 01" ラベルは Source Sans 3 -->
+      <!-- "SEARCH 01" ラベルは ui-main -->
       <div class="flex items-center gap-2 mb-3">
         <span class="flex-shrink-0 w-5 h-5 rounded-full bg-amber-50 border border-yellow-500
                      flex items-center justify-center font-ui-main text-xs font-bold text-amber-400">1</span>
         <span class="font-ui-main text-xs tracking-widest text-gray-400 uppercase font-semibold">Search 01</span>
       </div>
-      <!-- 検索欄・ドロップダウン (Source Sans 3) -->
+      <!-- 検索欄・ドロップダウン (ui-main) -->
       <div class="flex flex-col sm:flex-row gap-3 mb-3">
         <div class="relative flex-1">
           <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
