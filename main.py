@@ -32,6 +32,16 @@ DROP_TABLE_URL: str = "https://drops.warframestat.us/data/relics.json"
 # TODO 開発用データが入っているので取得失敗を通知する内容に変えてもいいかも #
 FALLBACK_URL: str = "./data_mock.json"
 
+# ミッション報酬データ (現行ドロップフィルター用)
+# 構造: missionRewards → Planet → Node → rewards → Rotation[] → itemName
+MISSION_REWARDS_URL: str = "https://drops.warframestat.us/data/missionRewards.json"
+
+# ミッション報酬 JSON のレリック名抽出パターン
+# 例: "Lith Q3 Relic" → tier="Lith", name="Q3" → displayName="Lith Q3"
+_RELIC_MISSION_PATTERN: re.Pattern = re.compile(
+    r'^(Lith|Meso|Neo|Axi)\s+(\S+)\s+Relic', re.IGNORECASE
+)
+
 # Intact 時の確率によるレアリティ再分類テーブル
 # ※ 公式ドロップテーブルの "Uncommon" 誤表記を補正するため、確率値で判定する
 RARITY_BY_CHANCE: dict[float, str] = {
@@ -96,6 +106,13 @@ prime_index: dict = {}
 
 # ソート済みの全 Prime アイテム名リスト
 all_prime_items: list[str] = []
+
+# ミッションドロップに存在するレリックの displayName セット ("Lith Q3" 形式)
+# load_mission_rewards() で非同期設定される
+mission_relic_set: set[str] = set()
+
+# フィルター有効状態は DOM の data-active 属性が真実のソース (_is_filter_active() 参照)
+# グローバル変数では管理しない (JS と Python の状態二重管理を避けるため)
 
 
 # ============================================================
@@ -254,6 +271,100 @@ def parse_relics(data: dict) -> dict:
 
 
 # ============================================================
+# ミッション報酬フィルター
+# ============================================================
+
+def parse_mission_relics(data: dict) -> set[str]:
+    """
+    ミッション報酬 JSON からドロップ可能なレリックの識別子セットを構築する。
+
+    JSON 構造: missionRewards → Planet → Node → rewards → Rotation[] → itemName
+    レリック名は "Lith Q3" 形式 (prime_index の displayName と一致) で格納する。
+
+    Args:
+        data (dict): missionRewards.json の JSON データ
+
+    Returns:
+        set[str]: 現在のミッションでドロップするレリックの displayName セット
+    """
+    relic_set: set[str] = set()
+    planets: dict = data.get("missionRewards", {})
+
+    for planet_data in planets.values():
+        if not isinstance(planet_data, dict):
+            continue
+        for node_data in planet_data.values():
+            if not isinstance(node_data, dict):
+                continue
+            rewards = node_data.get("rewards", {})
+            # rewards はローテーション形式 {"A": [...], "B": [...]} または直接リスト [...] の場合がある
+            rotations = rewards.values() if isinstance(rewards, dict) else [rewards]
+            for rotation_rewards in rotations:
+                if not isinstance(rotation_rewards, list):
+                    continue
+                for reward in rotation_rewards:
+                    item_name: str = reward.get("itemName", "")
+                    match = _RELIC_MISSION_PATTERN.match(item_name)
+                    if match:
+                        tier       = match.group(1).capitalize()
+                        relic_name = match.group(2)
+                        relic_set.add(f"{tier} {relic_name}")
+
+    return relic_set
+
+
+async def load_mission_rewards() -> None:
+    """
+    ミッション報酬データを非同期取得し、グローバルの mission_relic_set を更新する。
+
+    relics.json の読み込み完了後に asyncio.ensure_future() でバックグラウンド実行される。
+    取得完了後にフィルタートグルボタンを enabled にする。
+    取得失敗時はログ出力のみ行い、フィルター機能を無効のままにする。
+    """
+    global mission_relic_set
+
+    try:
+        data = await fetch_drop_table(MISSION_REWARDS_URL)
+        mission_relic_set = parse_mission_relics(data)
+        print(f"[情報] ミッション報酬データ読み込み完了: {len(mission_relic_set)} レリック")
+
+        # ミッションデータ準備完了 → 全フィルタートグルボタンを有効化
+        # disabled 解除と同時に、disabled 中の text-gray-300 → 非アクティブ色 text-gray-400 に更新する
+        for panel_id in range(1, PANEL_COUNT + 1):
+            btn = document.getElementById(f"filter-toggle-{panel_id}")
+            if btn:
+                btn.removeAttribute("disabled")
+                btn.classList.remove("text-gray-300")
+                btn.classList.add("text-gray-400")
+        all_btn = document.getElementById("filter-toggle-all")
+        if all_btn:
+            all_btn.removeAttribute("disabled")
+            all_btn.classList.remove("text-gray-300")
+            all_btn.classList.add("text-gray-400")
+
+    except Exception as err:
+        print(f"[警告] ミッション報酬データ取得失敗: {err} — 現行ドロップフィルターは使用できません")
+
+
+def _is_filter_active(panel_id: int) -> bool:
+    """
+    指定パネルのフィルタートグルボタンの現在の有効/無効状態を DOM から読み取る。
+
+    ビジュアル状態は JS 側 (toggleFilter / toggleFilterAll) が管理しており、
+    data-active 属性が真実のソースとなる。Python は DOM 状態を参照するだけにする。
+
+    Args:
+        panel_id (int): 対象パネル番号 (1〜PANEL_COUNT)
+
+    Returns:
+        bool: True=フィルター有効, False=無効
+    """
+    btn = document.getElementById(f"filter-toggle-{panel_id}")
+    # data-active 属性の文字列値 "true" を Python の bool に変換する
+    return bool(btn and btn.dataset.active == "true")
+
+
+# ============================================================
 # HTML スニペット生成
 # ============================================================
 
@@ -306,7 +417,8 @@ def render_relic_badge(relic_info: dict) -> str:
     )
 
 
-def render_relic_table(prime_item_name: str, index: dict) -> str:
+def render_relic_table(prime_item_name: str, index: dict,
+                       available_relics: set[str] | None = None) -> str:
     """
     選択された Prime アイテムのレリックマッピングマトリクス HTML を生成する。
 
@@ -315,8 +427,11 @@ def render_relic_table(prime_item_name: str, index: dict) -> str:
     セル: 該当レリックのバッジ (ティア色で色分け、ティア順に並べる)
 
     Args:
-        prime_item_name (str): 表示対象の Prime アイテム名 (例: "Nova Prime")
-        index (dict):          parse_relics() が返した prime_index
+        prime_item_name  (str):            表示対象の Prime アイテム名 (例: "Nova Prime")
+        index            (dict):           parse_relics() が返した prime_index
+        available_relics (set[str] | None): 現行ドロップフィルター用レリックセット。
+                                            None の場合はフィルターなし (全件表示)。
+                                            セットに含まれない displayName のバッジを除外する。
 
     Returns:
         str: テーブルの HTML 文字列。アイテムが存在しない場合はメッセージ HTML。
@@ -328,8 +443,8 @@ def render_relic_table(prime_item_name: str, index: dict) -> str:
             '</div>'
         )
 
-    parts_data: dict    = index[prime_item_name]
-    sorted_parts: list[str] = sorted(parts_data.keys(), key=_part_sort_key)
+    parts_data: dict         = index[prime_item_name]
+    sorted_parts: list[str]  = sorted(parts_data.keys(), key=_part_sort_key)
 
     # ── テーブルヘッダー行 (レアリティ列) ──
     rarity_headers_html = ""
@@ -354,8 +469,16 @@ def render_relic_table(prime_item_name: str, index: dict) -> str:
         relics_by_rarity: dict[str, list] = {rarity: [] for rarity in RARITY_ORDER}
         for relic_info in parts_data[part_name]:
             rarity = relic_info.get("rarity", "Unknown")
-            if rarity in relics_by_rarity:
-                relics_by_rarity[rarity].append(relic_info)
+            if rarity not in relics_by_rarity:
+                continue
+            # フィルターが有効な場合、ミッションドロップにないレリックを除外する
+            if available_relics is not None and relic_info.get("displayName", "") not in available_relics:
+                continue
+            relics_by_rarity[rarity].append(relic_info)
+
+        # フィルター有効時: 全列が空のパーツ行はスキップ (入手できるものがないため)
+        if available_relics is not None and not any(relics_by_rarity[r] for r in RARITY_ORDER):
+            continue
 
         for rarity in RARITY_ORDER:
             relics_by_rarity[rarity].sort(
@@ -387,6 +510,21 @@ def render_relic_table(prime_item_name: str, index: dict) -> str:
             f'text-sm border-r border-gray-200">{part_name}</td>'
             f'{cells_html}'
             f'</tr>'
+        )
+
+    # フィルター適用後に全行が空になった場合のメッセージ
+    if not rows_html:
+        if available_relics is not None:
+            return (
+                '<div class="flex flex-col items-center justify-center py-10 gap-1 text-gray-400">'
+                '<p class="font-ui-main text-sm font-semibold">現在ドロップ中のレリックはありません</p>'
+                '<p class="font-ui-main text-xs text-gray-300">フィルターをオフにすると全レリックを確認できます</p>'
+                '</div>'
+            )
+        return (
+            '<div class="flex flex-col items-center justify-center py-10 text-gray-400">'
+            '<p class="font-ui-main text-sm">パーツデータがありません。</p>'
+            '</div>'
         )
 
     return (
@@ -543,7 +681,10 @@ def update_results(selected_item: str, panel_id: int) -> None:
         return
 
     result_area = document.getElementById(f"result-area-{panel_id}")
-    table_html  = render_relic_table(selected_item, prime_index)
+    # フィルターが有効な場合のみ mission_relic_set を渡す (None の場合は全件表示)
+    # DOM の data-active 属性を参照することで、JS 側のトグル状態と同期する
+    active_relics = mission_relic_set if _is_filter_active(panel_id) else None
+    table_html    = render_relic_table(selected_item, prime_index, active_relics)
 
     # ダウンロードアイコン SVG (↓ 矢印)
     download_icon_svg = (
@@ -626,6 +767,10 @@ async def load_data(use_fallback: bool = False) -> None:
             "success"
         )
 
+        # ミッション報酬データをバックグラウンドで非同期取得する
+        # relics.json のロードをブロックしないよう ensure_future で並行実行する
+        asyncio.ensure_future(load_mission_rewards())
+
     except Exception as fetch_err:
         print(f"[エラー] データ取得失敗 ({url}): {fetch_err}")
         set_loading_state(False)
@@ -687,6 +832,36 @@ def _make_search_handler(panel_id: int):
     return on_search_input
 
 
+def _make_filter_toggle_handler(panel_id: int):
+    """
+    指定パネル用の現行ドロップフィルタートグルハンドラを生成して返す。
+
+    JS 側 (window.toggleFilter) がビジュアル状態と data-active 属性を更新した後、
+    change イベントをディスパッチして Python に通知する。Python 側はテーブルを再描画するだけでよい。
+
+    Args:
+        panel_id (int): 対象パネルの番号
+
+    Returns:
+        Callable: フィルタートグル change イベントハンドラ関数
+    """
+    def on_filter_toggle(event) -> None:
+        """
+        現行ドロップフィルタートグルボタンの change イベントハンドラ (パネル個別)。
+
+        JS 側が data-active を更新済みなので、DOM を参照して現在の選択アイテムを再描画する。
+
+        Args:
+            event: JS がディスパッチした DOM ChangeEvent
+        """
+        # 現在の選択アイテムがあれば即座に再描画 (DOM から filter 状態を読み取る)
+        item_select = document.getElementById(f"item-select-{panel_id}")
+        if item_select and item_select.value:
+            update_results(item_select.value, panel_id)
+
+    return on_filter_toggle
+
+
 def _make_select_handler(panel_id: int):
     """
     指定パネル用のドロップダウン選択ハンドラを生成して返す。
@@ -719,9 +894,13 @@ def _make_select_handler(panel_id: int):
 
 # PyScript の when() を関数として呼び出し、各パネルにハンドラを動的登録する
 # @when デコレータは静的セレクタにしか使えないため、ループで一括登録する
+# PyScript の when() を関数として呼び出し、各パネルにハンドラを動的登録する
+# filter-toggle-{n} は onclick でなく change イベントを listen する:
+#   JS の window.toggleFilter(n) がビジュアル更新後に btn.dispatchEvent(new Event('change')) する
 for _panel_id in range(1, PANEL_COUNT + 1):
     when("input",  f"#search-input-{_panel_id}")(_make_search_handler(_panel_id))
     when("change", f"#item-select-{_panel_id}")(_make_select_handler(_panel_id))
+    when("change", f"#filter-toggle-{_panel_id}")(_make_filter_toggle_handler(_panel_id))
 
 
 @when("click", "#reload-btn")
