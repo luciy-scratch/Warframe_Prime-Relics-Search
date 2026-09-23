@@ -118,6 +118,10 @@ mission_relic_set: set[str] = set()
 # フィルター有効状態は DOM の data-active 属性が真実のソース (_is_filter_active() 参照)
 # グローバル変数では管理しない (JS と Python の状態二重管理を避けるため)
 
+# URL パラメータで要求されたフィルター有効パネル番号のセット
+# load_mission_rewards() がボタンを enabled にした直後に適用される
+requested_filter_panels: set[int] = set()
+
 
 # ============================================================
 # URL パラメータ
@@ -383,6 +387,13 @@ async def load_mission_rewards(use_fallback: bool = False) -> None:
             all_btn.removeAttribute("disabled")
             all_btn.classList.remove("text-gray-300")
             all_btn.classList.add("text-gray-400")
+
+        # URL パラメータで事前指定されたパネルのフィルターを有効化する
+        # JS の toggleFilter() を呼んでビジュアル更新と change イベント発火を委譲する
+        from js import window as _js_win
+        for panel_id in range(1, PANEL_COUNT + 1):
+            if panel_id in requested_filter_panels:
+                _js_win.toggleFilter(panel_id)
 
     except Exception as err:
         print(f"[警告] ミッション報酬データ取得失敗: {err} — 現行ドロップフィルターは使用できません")
@@ -1006,13 +1017,46 @@ async def main() -> None:
         overlay.remove()
 
     # URL パラメータを読み取り、起動オプションを決定する
-    # 例: ?mock=1 または ?mock=true → モックデータを使用
-    url_params  = get_url_params()
-    use_mock    = url_params.get("mock", "0").lower() in ("1", "true")
+    url_params = get_url_params()
+
+    # ?mock=1 または ?mock=true → モックデータを使用
+    use_mock = url_params.get("mock", "0").lower() in ("1", "true")
     if use_mock:
         print("[情報] URL パラメータ: mock=true — モックデータを使用します")
 
+    # ?filter=all または ?filter=1,2,3 → 指定パネルのフィルターを事前有効化リストに追加
+    # load_mission_rewards() がボタンを enabled にしたタイミングで実際に適用される
+    filter_param = url_params.get("filter", "").strip().lower()
+    if filter_param:
+        if filter_param == "all":
+            requested_filter_panels.update(range(1, PANEL_COUNT + 1))
+        else:
+            for token in filter_param.split(","):
+                if token.strip().isdigit():
+                    panel_num = int(token.strip())
+                    if 1 <= panel_num <= PANEL_COUNT:
+                        requested_filter_panels.add(panel_num)
+
     await load_data(use_fallback=use_mock)
+
+    # ?q1= ?q2= ?q3= → 各パネルの検索欄に初期値を入力し、部分一致で最初のアイテムを表示する
+    for panel_id in range(1, PANEL_COUNT + 1):
+        query = url_params.get(f"q{panel_id}", "").strip()
+        if not query:
+            continue
+        matched = [item for item in all_prime_items if query.lower() in item.lower()]
+        if not matched:
+            print(f"[情報] URL パラメータ q{panel_id}='{query}' に一致するアイテムなし")
+            continue
+        first_match = matched[0]
+        search_input = document.getElementById(f"search-input-{panel_id}")
+        item_select  = document.getElementById(f"item-select-{panel_id}")
+        if search_input:
+            search_input.value = first_match
+        if item_select:
+            item_select.innerHTML = render_item_options(matched)
+            item_select.value     = first_match
+        update_results(first_match, panel_id)
 
 
 # PyScript (Pyodide バックエンド) はトップレベル await をサポートしている
