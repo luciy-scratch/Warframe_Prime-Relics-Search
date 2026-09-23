@@ -17,7 +17,7 @@ import json
 import re
 import asyncio
 from pyscript import document, when
-from js import fetch as js_fetch  # ブラウザネイティブの fetch API を js モジュール経由で使用
+from js import fetch as js_fetch, window as js_window  # ブラウザネイティブの fetch API と window オブジェクト
 
 
 # ============================================================
@@ -28,13 +28,17 @@ from js import fetch as js_fetch  # ブラウザネイティブの fetch API を
 # all.slim.json より relics.json の方が軽量かつ構造が明確なため使用
 DROP_TABLE_URL: str = "https://drops.warframestat.us/data/relics.json"
 
-# フォールバック: API 取得失敗時に使用するローカルモックデータ
-# TODO 開発用データが入っているので取得失敗を通知する内容に変えてもいいかも #
-FALLBACK_URL: str = "./data_mock.json"
+# フォールバック: API 取得失敗時 / ?mock=1 時に使用するローカルモックデータ
+# warframe-drop-data リポジトリで生成した relics.json を配置する
+FALLBACK_URL: str = "./data_mock_relics.json"
 
 # ミッション報酬データ (現行ドロップフィルター用)
 # 構造: missionRewards → Planet → Node → rewards → Rotation[] → itemName
 MISSION_REWARDS_URL: str = "https://drops.warframestat.us/data/missionRewards.json"
+
+# ミッション報酬フォールバック: API 取得失敗時 / ?mock=1 時に使用するローカルモックデータ
+# warframe-drop-data リポジトリで生成した missionRewards.json を配置する
+MISSION_REWARDS_FALLBACK_URL: str = "./data_mock_mission_rewards.json"
 
 # ミッション報酬 JSON のレリック名抽出パターン
 # 例: "Lith Q3 Relic" → tier="Lith", name="Q3" → displayName="Lith Q3"
@@ -113,6 +117,38 @@ mission_relic_set: set[str] = set()
 
 # フィルター有効状態は DOM の data-active 属性が真実のソース (_is_filter_active() 参照)
 # グローバル変数では管理しない (JS と Python の状態二重管理を避けるため)
+
+
+# ============================================================
+# URL パラメータ
+# ============================================================
+
+def get_url_params() -> dict[str, str]:
+    """
+    現在の URL のクエリ文字列をパースして辞書として返す。
+
+    GitHub Pages はクライアント側で window.location.search を参照するため、
+    サーバーサイドの設定不要でクエリパラメータが利用できる。
+
+    Returns:
+        dict[str, str]: パラメータ名 → 値 の辞書。パラメータなしなら空辞書。
+
+    Examples:
+        URL: https://example.com/?mock=1&foo=bar
+        → {"mock": "1", "foo": "bar"}
+    """
+    search: str = js_window.location.search  # 例: "?mock=1&foo=bar"
+    if not search or search == "?":
+        return {}
+    params: dict[str, str] = {}
+    for pair in search.lstrip("?").split("&"):
+        if "=" in pair:
+            key, value = pair.split("=", 1)
+            params[key] = value
+        elif pair:
+            # 値なしパラメータ (?flag のみ) は空文字として扱う
+            params[pair] = ""
+    return params
 
 
 # ============================================================
@@ -313,20 +349,26 @@ def parse_mission_relics(data: dict) -> set[str]:
     return relic_set
 
 
-async def load_mission_rewards() -> None:
+async def load_mission_rewards(use_fallback: bool = False) -> None:
     """
     ミッション報酬データを非同期取得し、グローバルの mission_relic_set を更新する。
 
     relics.json の読み込み完了後に asyncio.ensure_future() でバックグラウンド実行される。
     取得完了後にフィルタートグルボタンを enabled にする。
     取得失敗時はログ出力のみ行い、フィルター機能を無効のままにする。
+
+    Args:
+        use_fallback (bool): True の場合、ローカルモックデータ (data_mock_mission_rewards.json) を使用する
     """
     global mission_relic_set
 
+    url          = MISSION_REWARDS_FALLBACK_URL if use_fallback else MISSION_REWARDS_URL
+    source_label = "モックデータ" if use_fallback else MISSION_REWARDS_URL
+
     try:
-        data = await fetch_drop_table(MISSION_REWARDS_URL)
+        data = await fetch_drop_table(url)
         mission_relic_set = parse_mission_relics(data)
-        print(f"[情報] ミッション報酬データ読み込み完了: {len(mission_relic_set)} レリック")
+        print(f"[情報] ミッション報酬データ読み込み完了 ({source_label}): {len(mission_relic_set)} レリック")
 
         # ミッションデータ準備完了 → 全フィルタートグルボタンを有効化
         # disabled 解除と同時に、disabled 中の text-gray-300 → 非アクティブ色 text-gray-400 に更新する
@@ -769,7 +811,8 @@ async def load_data(use_fallback: bool = False) -> None:
 
         # ミッション報酬データをバックグラウンドで非同期取得する
         # relics.json のロードをブロックしないよう ensure_future で並行実行する
-        asyncio.ensure_future(load_mission_rewards())
+        # use_fallback フラグを引き継ぐことで ?mock=1 時はモックデータを使用する
+        asyncio.ensure_future(load_mission_rewards(use_fallback=use_fallback))
 
     except Exception as fetch_err:
         print(f"[エラー] データ取得失敗 ({url}): {fetch_err}")
@@ -950,7 +993,14 @@ async def main() -> None:
         await asyncio.sleep(0.4)
         overlay.remove()
 
-    await load_data()
+    # URL パラメータを読み取り、起動オプションを決定する
+    # 例: ?mock=1 または ?mock=true → モックデータを使用
+    url_params  = get_url_params()
+    use_mock    = url_params.get("mock", "0").lower() in ("1", "true")
+    if use_mock:
+        print("[情報] URL パラメータ: mock=true — モックデータを使用します")
+
+    await load_data(use_fallback=use_mock)
 
 
 # PyScript (Pyodide バックエンド) はトップレベル await をサポートしている
