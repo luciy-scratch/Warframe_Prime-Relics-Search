@@ -429,7 +429,7 @@ def _part_sort_key(part_name: str) -> tuple[int, str]:
         return (len(PART_PRIORITY), part_name)
 
 
-def render_relic_badge(relic_info: dict) -> str:
+def render_relic_badge(relic_info: dict, large: bool = False) -> str:
     """
     1 つのレリック情報からティアカラーのバッジ HTML を生成する。
 
@@ -443,6 +443,7 @@ def render_relic_badge(relic_info: dict) -> str:
             "rarity":      str,  # 例: "Common"
             "displayName": str,  # 例: "Lith N6"
         }
+        large (bool): True の場合、セル内の唯一のバッジとして大きく表示する
 
     Returns:
         str: バッジの HTML 文字列
@@ -451,6 +452,14 @@ def render_relic_badge(relic_info: dict) -> str:
     display     = relic_info.get("displayName", "")
     css_classes = TIER_CSS.get(tier, "text-zinc-500 border-zinc-600 bg-zinc-900/40")
 
+    if large:
+        # セル内に1件だけの場合: フォントサイズ・パディングを拡大して視認性を向上
+        return (
+            f'<span class="inline-flex items-center border-2 rounded-lg px-4 py-2 '
+            f'text-xl font-ui-badge font-semibold tracking-wide whitespace-nowrap {css_classes}">'
+            f'{display}'
+            f'</span>'
+        )
     return (
         f'<span class="inline-flex items-center border rounded px-2 py-1 '
         f'text-sm font-ui-badge font-medium tracking-wide whitespace-nowrap mr-1 mb-1 {css_classes}">'
@@ -534,10 +543,13 @@ def render_relic_table(prime_item_name: str, index: dict,
         for rarity in RARITY_ORDER:
             relics = relics_by_rarity[rarity]
             if relics:
-                badges = "".join(render_relic_badge(rel) for rel in relics)
+                # 1件のみのセルは大きなバッジで強調表示し、セル内中央揃えにする
+                is_sole    = len(relics) == 1
+                badges     = "".join(render_relic_badge(rel, large=is_sole) for rel in relics)
+                div_class  = "flex justify-center items-center h-full" if is_sole else "flex flex-wrap"
                 cells_html += (
-                    f'<td class="px-4 py-2.5 align-top">'
-                    f'<div class="flex flex-wrap">{badges}</div>'
+                    f'<td class="px-4 py-2.5 align-middle text-center">'
+                    f'<div class="{div_class}">{badges}</div>'
                     f'</td>'
                 )
             else:
