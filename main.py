@@ -718,7 +718,12 @@ def show_param_notice(url_params: dict[str, str]) -> None:
         label = "全パネル" if filter_param.lower() == "all" else f"パネル {filter_param}"
         parts.append(f"フィルターON ({label})")
 
-    detail_span.textContent = "、".join(parts)
+    detail_text = "、".join(parts)
+    # 検索欄の初期値が含まれる場合は × ボタンで消去できる旨を補足する
+    has_query = any(url_params.get(f"q{pid}", "").strip() for pid in range(1, PANEL_COUNT + 1))
+    if has_query:
+        detail_text += "　※ 検索欄の内容は各検索欄内の × ボタンで個別に消去できます"
+tail_span.textContent = detail_text
 
     # クリーンな URL (パラメータなし) へのリンクをセット
     # js_window.location.pathname はクエリ文字列を含まないパス部分を返す
