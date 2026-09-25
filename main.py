@@ -1097,6 +1097,8 @@ async def main() -> None:
         item_select  = document.getElementById(f"item-select-{panel_id}")
         if search_input:
             search_input.value = first_match
+            # URL パラメータで値が入った場合も × ボタンを表示する
+            js_window.eval(f"window._toggleClearBtn(document.getElementById('search-input-{panel_id}'))")
         if item_select:
             item_select.innerHTML = render_item_options(matched)
             item_select.value     = first_match

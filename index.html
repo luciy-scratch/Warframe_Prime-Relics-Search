@@ -269,11 +269,19 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
             </svg>
           </div>
           <input id="search-input-1" type="text" placeholder="Primeアイテムを検索... (例: Ivara Prime)" disabled
+            oninput="window._toggleClearBtn(this)"
             autocomplete="off" class="w-full font-ui-main bg-white border border-gray-300 rounded-lg
-                   pl-9 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400
+                   pl-9 pr-8 py-2.5 text-sm text-gray-900 placeholder-gray-400
                    focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/50
                    disabled:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed
                    shadow-sm transition-colors duration-150">
+          <button type="button" hidden onclick="window.clearSearch(1)"
+            class="clear-search-btn absolute inset-y-0 right-2 flex items-center
+                   text-gray-400 hover:text-gray-600 transition-colors duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
         <div class="sm:w-64">
           <select id="item-select-1" disabled class="w-full font-ui-main bg-white border border-gray-300 rounded-lg
@@ -320,11 +328,19 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
             </svg>
           </div>
           <input id="search-input-2" type="text" placeholder="Primeアイテムを検索... (例: Ivara Prime)" disabled
+            oninput="window._toggleClearBtn(this)"
             autocomplete="off" class="w-full font-ui-main bg-white border border-gray-300 rounded-lg
-                   pl-9 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400
+                   pl-9 pr-8 py-2.5 text-sm text-gray-900 placeholder-gray-400
                    focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/50
                    disabled:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed
                    shadow-sm transition-colors duration-150">
+          <button type="button" hidden onclick="window.clearSearch(2)"
+            class="clear-search-btn absolute inset-y-0 right-2 flex items-center
+                   text-gray-400 hover:text-gray-600 transition-colors duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
         <div class="sm:w-64">
           <select id="item-select-2" disabled class="w-full font-ui-main bg-white border border-gray-300 rounded-lg
@@ -371,11 +387,19 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
             </svg>
           </div>
           <input id="search-input-3" type="text" placeholder="Primeアイテムを検索... (例: Ivara Prime)" disabled
+            oninput="window._toggleClearBtn(this)"
             autocomplete="off" class="w-full font-ui-main bg-white border border-gray-300 rounded-lg
-                   pl-9 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400
+                   pl-9 pr-8 py-2.5 text-sm text-gray-900 placeholder-gray-400
                    focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/50
                    disabled:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed
                    shadow-sm transition-colors duration-150">
+          <button type="button" hidden onclick="window.clearSearch(3)"
+            class="clear-search-btn absolute inset-y-0 right-2 flex items-center
+                   text-gray-400 hover:text-gray-600 transition-colors duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
         <div class="sm:w-64">
           <select id="item-select-3" disabled class="w-full font-ui-main bg-white border border-gray-300 rounded-lg
@@ -468,6 +492,22 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
       allBtn.dataset.active = anyActive.toString();
       _applyFilterButtonStyle(allBtn, anyActive);
     }
+
+    // 検索欄に内容があるときだけ × ボタンを表示する
+    window._toggleClearBtn = function(input) {
+      const btn = input.parentElement.querySelector('.clear-search-btn');
+      if (btn) btn.hidden = !input.value;
+    };
+
+    // 検索欄をクリアして Python の input ハンドラに通知する
+    window.clearSearch = function(panelId) {
+      const input = document.getElementById('search-input-' + panelId);
+      if (!input || input.disabled) return;
+      input.value = '';
+      window._toggleClearBtn(input);
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+    };
 
     window.toggleFilter = function(panelId) {
       const btn = document.getElementById('filter-toggle-' + panelId);
