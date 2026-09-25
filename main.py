@@ -687,6 +687,47 @@ def set_status(message: str, state: str = "normal") -> None:
     status_text.classList.add(color_map.get(state, "text-gray-500"))
 
 
+def show_param_notice(url_params: dict[str, str]) -> None:
+    """
+    URL パラメータが存在する場合、適用内容を通知バナーに表示する。
+
+    バナーには適用中のパラメータの概要と、クリーンな URL へのリダイレクトリンクを設置する。
+
+    Args:
+        url_params (dict[str, str]): get_url_params() が返したパラメータ辞書
+    """
+    if not url_params:
+        return
+
+    notice      = document.getElementById("param-notice")
+    detail_span = document.getElementById("param-notice-detail")
+    clear_link  = document.getElementById("param-notice-clear")
+    if not notice or not detail_span or not clear_link:
+        return
+
+    # 適用内容の説明文を組み立てる
+    parts: list[str] = []
+    if url_params.get("mock", "0").lower() in ("1", "true"):
+        parts.append("モックデータ使用")
+    for panel_id in range(1, PANEL_COUNT + 1):
+        query = url_params.get(f"q{panel_id}", "").strip()
+        if query:
+            parts.append(f'パネル{panel_id}="{query}"')
+    filter_param = url_params.get("filter", "").strip()
+    if filter_param:
+        label = "全パネル" if filter_param.lower() == "all" else f"パネル {filter_param}"
+        parts.append(f"フィルターON ({label})")
+
+    detail_span.textContent = "、".join(parts)
+
+    # クリーンな URL (パラメータなし) へのリンクをセット
+    # js_window.location.pathname はクエリ文字列を含まないパス部分を返す
+    clean_url = js_window.location.pathname
+    clear_link.setAttribute("href", clean_url)
+
+    notice.hidden = False
+
+
 def show_placeholder_in_result_area(panel_id: int) -> None:
     """
     アイテム未選択時のプレースホルダーを指定パネルの結果エリアに表示する。
@@ -1038,6 +1079,9 @@ async def main() -> None:
                         requested_filter_panels.add(panel_num)
 
     await load_data(use_fallback=use_mock)
+
+    # パラメータが1つでもあれば通知バナーを表示する
+    show_param_notice(url_params)
 
     # ?q1= ?q2= ?q3= → 各パネルの検索欄に初期値を入力し、部分一致で最初のアイテムを表示する
     for panel_id in range(1, PANEL_COUNT + 1):
