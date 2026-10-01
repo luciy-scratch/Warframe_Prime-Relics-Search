@@ -723,7 +723,7 @@ def show_param_notice(url_params: dict[str, str]) -> None:
     has_query = any(url_params.get(f"q{pid}", "").strip() for pid in range(1, PANEL_COUNT + 1))
     if has_query:
         detail_text += "　※ 検索欄の内容は各検索欄内の × ボタンで個別に消去できます"
-tail_span.textContent = detail_text
+    detail_span.textContent = detail_text
 
     # クリーンな URL (パラメータなし) へのリンクをセット
     # js_window.location.pathname はクエリ文字列を含まないパス部分を返す
