@@ -1,8 +1,8 @@
 .claude
+.resource
+.venv
+.WFCD_ManualAnalysis
 CLAUDE.md
 PROMPT.md
-
-.venv
 pyproject.toml
 
-.WFCD_ManualAnalysis
