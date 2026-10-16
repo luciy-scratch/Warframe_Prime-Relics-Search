@@ -13,6 +13,7 @@ PyScript (Pyodide バックエンド) 上で動作し、以下を担当する:
 依存ライブラリ: Python 標準ライブラリのみ (外部パッケージ不要)
 """
 
+import html
 import json
 import re
 import asyncio
@@ -96,6 +97,25 @@ PART_PRIORITY: list[str] = [
     "Chassis Blueprint",
     "Systems Blueprint",
 ]
+
+# 注目アイテム: レリックの報酬に含まれるとバッヂに演出が付くアイテムの固定リスト
+# キー: ドロップテーブル上の itemName と完全一致する文字列
+# 値  : {"icon": アイコン, "tooltip": ツールチップ文} の辞書。どちらのキーも省略可能。
+#       icon    : 次のいずれかを指定できる。省略時はアイコンなし。
+#                 - 絵文字・記号などの文字列 (例: "★")
+#                 - 画像パス/URL (".png" ".svg" ".webp" ".jpg" ".gif" で終わる、または "http"/"./" で始まる文字列)
+#       tooltip : バッヂのホバー時に表示する文。省略時はアイテム名を表示する。
+#                 複数の注目アイテムを含むレリックでは、各アイテムの文を改行で連結して表示する。
+# ※ 下記は動作確認用のサンプル。実際に強調したいアイテムに置き換えること
+HIGHLIGHT_ITEMS: dict[str, dict[str, str]] = {
+    "Cobra & Crane Prime Guard": {
+        "icon":    "./highlight_items/prime_guard_128x128.webp",
+        "tooltip": "沼",
+    },
+}
+
+# 画像として扱うアイコン文字列の判定用拡張子
+_ICON_IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".svg", ".webp", ".jpg", ".jpeg", ".gif")
 
 # 独立した検索・結果表示パネルの数
 PANEL_COUNT: int = 3
@@ -274,6 +294,14 @@ def parse_relics(data: dict) -> dict:
             if state != "Intact":
                 continue
 
+            # このレリックの全報酬から注目アイテムを抽出する。
+            # Prime パーツ以外 (Forma 等) も対象にするため、Prime 判定のループとは別に走査する
+            highlight_items: list[str] = [
+                reward.get("itemName", "")
+                for reward in rewards
+                if reward.get("itemName", "") in HIGHLIGHT_ITEMS
+            ]
+
             for reward in rewards:
                 try:
                     item_name: str   = reward.get("itemName", "")
@@ -296,6 +324,7 @@ def parse_relics(data: dict) -> dict:
                         "relicName":   relic_name,
                         "rarity":      rarity,
                         "displayName": f"{tier} {relic_name}",
+                        "highlights":  highlight_items,
                     }
                     index[prime_item_name][part_name].append(relic_info)
 
@@ -462,21 +491,58 @@ def render_relic_badge(relic_info: dict, large: bool = False) -> str:
     tier        = relic_info.get("tier", "")
     display     = relic_info.get("displayName", "")
     css_classes = TIER_CSS.get(tier, "text-zinc-500 border-zinc-600 bg-zinc-900/40")
+    highlights  = relic_info.get("highlights", [])
+
+    # 注目アイテムを含むレリックのみ、リング・グロー・アイコン・ツールチップを付与する
+    title_attr = ""
+    icons_html = ""
+    if highlights:
+        css_classes += " relic-glow"
+        # tooltip 未指定のアイテムはアイテム名をそのまま表示する
+        tooltip = html.escape(
+            "\n".join(HIGHLIGHT_ITEMS[item_name].get("tooltip", item_name) for item_name in highlights),
+            quote=True,
+        )
+        title_attr = f' title="{tooltip}"'
+        icons_html = "".join(_render_highlight_icon(item_name) for item_name in highlights)
 
     if large:
         # セル内に1件だけの場合: フォントサイズ・パディングを拡大して視認性を向上
         return (
-            f'<span class="inline-flex items-center border-2 rounded-lg px-4 py-2 '
+            f'<span{title_attr} class="inline-flex items-center border-2 rounded-lg px-4 py-2 '
             f'text-xl font-ui-badge font-semibold tracking-wide whitespace-nowrap {css_classes}">'
-            f'{display}'
+            f'{icons_html}{display}'
             f'</span>'
         )
     return (
-        f'<span class="inline-flex items-center border rounded px-2 py-1 '
+        f'<span{title_attr} class="inline-flex items-center border rounded px-2 py-1 '
         f'text-sm font-ui-badge font-medium tracking-wide whitespace-nowrap mr-1 mb-1 {css_classes}">'
-        f'{display}'
+        f'{icons_html}{display}'
         f'</span>'
     )
+
+
+def _render_highlight_icon(item_name: str) -> str:
+    """
+    注目アイテムに対応するアイコンの HTML を生成する。
+
+    HIGHLIGHT_ITEMS の "icon" が画像パス/URL なら img タグ、それ以外は文字列 (絵文字等) として描画する。
+
+    Args:
+        item_name (str): HIGHLIGHT_ITEMS のキーとなる注目アイテム名
+
+    Returns:
+        str: アイコンの HTML 文字列。アイコン未定義の場合は空文字列。
+    """
+    icon = HIGHLIGHT_ITEMS.get(item_name, {}).get("icon", "")
+    if not icon:
+        return ""
+
+    safe_icon = html.escape(icon, quote=True)
+    is_image  = icon.lower().endswith(_ICON_IMAGE_EXTENSIONS) or icon.startswith(("http", "./"))
+    if is_image:
+        return f'<img src="{safe_icon}" alt="" class="inline-block h-[1em] w-[1em] mr-1.5 object-contain">'
+    return f'<span class="mr-1.5" aria-hidden="true">{safe_icon}</span>'
 
 
 def render_relic_table(prime_item_name: str, index: dict,

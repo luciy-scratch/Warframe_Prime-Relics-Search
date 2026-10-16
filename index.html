@@ -90,6 +90,17 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
       background: #9ca3af;
     }
 
+    /* 注目アイテムを含むレリックのバッヂ演出 (Tailwind では keyframes を表現できないため CSS で定義)
+       currentColor はバッヂのティア色テキストを参照するため、ティアごとに自動で色が変わる */
+    @keyframes relic-glow-pulse {
+      0%, 100% { box-shadow: 0 0 2px 0 currentColor; }
+      50%      { box-shadow: 0 0 8px 2px currentColor; }
+    }
+
+    .relic-glow {
+      animation: relic-glow-pulse 2s ease-in-out infinite;
+    }
+
     /* PyScript デフォルトの py-terminal を非表示 */
     py-terminal {
       display: none !important;
