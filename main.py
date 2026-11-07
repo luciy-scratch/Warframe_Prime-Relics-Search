@@ -110,12 +110,12 @@ PART_PRIORITY: list[str] = [
 # ※ 下記は動作確認用のサンプル。実際に強調したいアイテムに置き換えること
 HIGHLIGHT_ITEMS: dict[str, dict[str, str]] = {
     "Cobra & Crane Prime Guard": {
-        "icon":    "./highlight_items/prime_guard_128x128.webp",
-        "tooltip": "沼",
+        "icon":     "./highlight_items/prime_guard_128x128.webp",
+        "tooltip":  "沼",
     },
     "Silva & Aegis Prime Guard": {
-        "icon":    "./highlight_items/prime_guard_128x128.webp",
-        "tooltip"  "間違えて入った沼",
+        "icon":     "./highlight_items/prime_guard_128x128.webp",
+        "tooltip":  "間違えて入った沼",
     }
 }
 
