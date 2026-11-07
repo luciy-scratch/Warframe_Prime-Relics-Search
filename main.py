@@ -695,6 +695,25 @@ def render_relic_table(prime_item_name: str, index: dict,
     )
 
 
+def search_prime_items(query: str) -> list[str]:
+    """
+    検索語に部分一致する Prime アイテム名を返す。完全一致するものは先頭に置く。
+
+    "Furis Prime" のように別アイテム ("Afuris Prime") の一部にもなる名前でも、
+    完全一致を先頭にすることで、先頭候補を選ぶ処理 (URL パラメータ) が意図したアイテムを選べる。
+
+    Args:
+        query (str): 検索語 (大文字小文字は区別しない。空文字なら全件を返す)
+
+    Returns:
+        list[str]: 一致したアイテム名。完全一致 → 部分一致 (all_prime_items の順) の順
+    """
+    normalized_query = query.strip().lower()
+    matched = [item for item in all_prime_items if normalized_query in item.lower()]
+    # sorted は安定ソートのため、完全一致以外は元の並びを保つ
+    return sorted(matched, key=lambda item: item.lower() != normalized_query)
+
+
 def render_item_options(items: list[str]) -> str:
     """
     Prime アイテム一覧から <select> の <option> タグ群を生成する。
@@ -1013,7 +1032,7 @@ def _make_search_handler(panel_id: int):
             event: DOM InputEvent
         """
         query: str = event.target.value.strip().lower()
-        filtered   = [item for item in all_prime_items if query in item.lower()]
+        filtered   = search_prime_items(query)
 
         item_select = document.getElementById(f"item-select-{panel_id}")
         item_select.innerHTML = render_item_options(filtered)
@@ -1277,12 +1296,12 @@ async def main() -> None:
     # パラメータが1つでもあれば通知バナーを表示する
     show_param_notice(url_params)
 
-    # ?q1= ?q2= ?q3= → 各パネルの検索欄に初期値を入力し、部分一致で最初のアイテムを表示する
+    # ?q1= ?q2= ?q3= → 各パネルの検索欄に初期値を入力し、完全一致 (無ければ部分一致) の先頭アイテムを表示する
     for panel_id in range(1, PANEL_COUNT + 1):
         query = url_params.get(f"q{panel_id}", "").strip()
         if not query:
             continue
-        matched = [item for item in all_prime_items if query.lower() in item.lower()]
+        matched = search_prime_items(query)
         if not matched:
             print(f"[情報] URL パラメータ q{panel_id}='{query}' に一致するアイテムなし")
             continue
