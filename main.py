@@ -17,6 +17,7 @@ import html
 import json
 import re
 import asyncio
+from urllib.parse import quote, unquote_plus
 from pyscript import document, when
 from js import fetch as js_fetch, window as js_window  # ブラウザネイティブの fetch API と window オブジェクト
 
@@ -29,7 +30,7 @@ from js import fetch as js_fetch, window as js_window  # ブラウザネイテ�
 # all.slim.json より relics.json の方が軽量かつ構造が明確なため使用
 DROP_TABLE_URL: str = "https://drops.warframestat.us/data/relics.json"
 
-# フォールバック: API 取得失敗時 / ?mock=1 時に使用するローカルモックデータ
+# フォールバック: API 取得失敗時 / ?source=local 時に使用する同梱データ
 # warframe-drop-data リポジトリで生成した relics.json を配置する
 FALLBACK_URL: str = "./data_mock_relics.json"
 
@@ -37,7 +38,7 @@ FALLBACK_URL: str = "./data_mock_relics.json"
 # 構造: missionRewards → Planet → Node → rewards → Rotation[] → itemName
 MISSION_REWARDS_URL: str = "https://drops.warframestat.us/data/missionRewards.json"
 
-# ミッション報酬フォールバック: API 取得失敗時 / ?mock=1 時に使用するローカルモックデータ
+# ミッション報酬フォールバック: API 取得失敗時 / ?source=local 時に使用する同梱データ
 # warframe-drop-data リポジトリで生成した missionRewards.json を配置する
 MISSION_REWARDS_FALLBACK_URL: str = "./data_mock_mission_rewards.json"
 
@@ -147,6 +148,24 @@ requested_filter_panels: set[int] = set()
 # URL パラメータ
 # ============================================================
 
+def is_local_source_requested(url_params: dict[str, str]) -> bool:
+    """
+    URL パラメータが同梱データの使用を要求しているか判定する。
+
+    正式なパラメータは ?source=local。以前配布した URL を壊さないよう、
+    旧名称の ?mock=1 / ?mock=true も同じ意味として受け付ける。
+
+    Args:
+        url_params (dict[str, str]): get_url_params() が返したパラメータ辞書
+
+    Returns:
+        bool: 同梱データを使う場合 True
+    """
+    if url_params.get("source", "").strip().lower() == "local":
+        return True
+    return url_params.get("mock", "0").strip().lower() in ("1", "true")
+
+
 def get_url_params() -> dict[str, str]:
     """
     現在の URL のクエリ文字列をパースして辞書として返す。
@@ -168,7 +187,8 @@ def get_url_params() -> dict[str, str]:
     for pair in search.lstrip("?").split("&"):
         if "=" in pair:
             key, value = pair.split("=", 1)
-            params[key] = value
+            # URL 作成機能が %20 などでエンコードした検索語を元の文字列に戻す
+            params[key] = unquote_plus(value)
         elif pair:
             # 値なしパラメータ (?flag のみ) は空文字として扱う
             params[pair] = ""
@@ -188,7 +208,7 @@ async def fetch_drop_table(url: str) -> dict:
     JS オブジェクトの変換問題を回避している。
 
     Args:
-        url (str): 取得先 URL (warframestat.us API またはモックデータパス)
+        url (str): 取得先 URL (warframestat.us API または同梱データパス)
 
     Returns:
         dict: パース済みの JSON データ
@@ -391,12 +411,12 @@ async def load_mission_rewards(use_fallback: bool = False) -> None:
     取得失敗時はログ出力のみ行い、フィルター機能を無効のままにする。
 
     Args:
-        use_fallback (bool): True の場合、ローカルモックデータ (data_mock_mission_rewards.json) を使用する
+        use_fallback (bool): True の場合、同梱データ (data_mock_mission_rewards.json) を使用する
     """
     global mission_relic_set
 
     url          = MISSION_REWARDS_FALLBACK_URL if use_fallback else MISSION_REWARDS_URL
-    source_label = "モックデータ" if use_fallback else MISSION_REWARDS_URL
+    source_label = "同梱データ" if use_fallback else MISSION_REWARDS_URL
 
     try:
         data = await fetch_drop_table(url)
@@ -773,8 +793,8 @@ def show_param_notice(url_params: dict[str, str]) -> None:
 
     # 適用内容の説明文を組み立てる
     parts: list[str] = []
-    if url_params.get("mock", "0").lower() in ("1", "true"):
-        parts.append("モックデータ使用")
+    if is_local_source_requested(url_params):
+        parts.append("同梱データ使用")
     for panel_id in range(1, PANEL_COUNT + 1):
         query = url_params.get(f"q{panel_id}", "").strip()
         if query:
@@ -911,16 +931,16 @@ async def load_data(use_fallback: bool = False) -> None:
     """
     ドロップテーブルを非同期で Fetch し、パース・インデックス構築・UI 更新を行う。
 
-    失敗した場合はフォールバック (モックデータ) で再試行し、
+    失敗した場合はフォールバック (同梱データ) で再試行し、
     それも失敗した場合のみエラー状態を表示する。
 
     Args:
-        use_fallback (bool): True の場合、ローカルモックデータ (data_mock.json) を使用する
+        use_fallback (bool): True の場合、同梱データ (data_mock.json) を使用する
     """
     global prime_index, all_prime_items
 
     url          = FALLBACK_URL if use_fallback else DROP_TABLE_URL
-    source_label = "モックデータ" if use_fallback else "warframestat.us"
+    source_label = "同梱データ" if use_fallback else "warframestat.us"
 
     set_loading_state(True)
     set_status(f"{source_label} からデータを取得中...", "loading")
@@ -940,13 +960,13 @@ async def load_data(use_fallback: bool = False) -> None:
         set_loading_state(False)
         set_status(
             f"{len(all_prime_items)} アイテムのデータを読み込み済み"
-            f"{'（モックデータ）' if use_fallback else ''}",
+            f"{'（同梱データ）' if use_fallback else ''}",
             "success"
         )
 
         # ミッション報酬データをバックグラウンドで非同期取得する
         # relics.json のロードをブロックしないよう ensure_future で並行実行する
-        # use_fallback フラグを引き継ぐことで ?mock=1 時はモックデータを使用する
+        # use_fallback フラグを引き継ぐことで ?source=local 時は同梱データを使用する
         asyncio.ensure_future(load_mission_rewards(use_fallback=use_fallback))
 
     except Exception as fetch_err:
@@ -954,9 +974,9 @@ async def load_data(use_fallback: bool = False) -> None:
         set_loading_state(False)
 
         if not use_fallback:
-            # API 失敗時はモックデータにフォールバック
-            print("[情報] ローカルモックデータにフォールバックします...")
-            set_status("API 取得失敗 — モックデータに切り替えます...", "error")
+            # API 失敗時は同梱データにフォールバック
+            print("[情報] 同梱データにフォールバックします...")
+            set_status("API 取得失敗 — 同梱データに切り替えます...", "error")
             await asyncio.sleep(1)  # ユーザーへの視覚的フィードバックのため少し待機
             await load_data(use_fallback=True)
         else:
@@ -1081,6 +1101,109 @@ for _panel_id in range(1, PANEL_COUNT + 1):
     when("change", f"#filter-toggle-{_panel_id}")(_make_filter_toggle_handler(_panel_id))
 
 
+# ============================================================
+# URL 作成ダイアログ
+# ============================================================
+
+def build_shared_url() -> str:
+    """
+    URL 作成ダイアログの入力内容から、状態を再現する URL を組み立てる。
+
+    検索語は q1〜q3、絞り込みは filter (全パネルなら "all"、一部なら "1,3" 形式) として出力する。
+    同梱データを使う場合は source=local を付ける。
+    何も指定されていなければクエリ文字列なしのベース URL を返す。
+
+    Returns:
+        str: 作成した URL
+    """
+    # 現在のページ自身をベースにすることで、GitHub Pages のサブパス配下でも正しい URL になる。
+    base_url: str = js_window.location.origin + js_window.location.pathname
+    query_parts: list[str] = []
+    filter_panels: list[int] = []
+
+    # 同梱データ指定は先頭に置く (公式データが更新に追いつかない時の代理リソース用)
+    if document.getElementById("url-builder-source-local").checked:
+        query_parts.append("source=local")
+
+    for panel_id in range(1, PANEL_COUNT + 1):
+        query = document.getElementById(f"url-builder-query-{panel_id}").value.strip()
+        if query:
+            query_parts.append(f"q{panel_id}={quote(query, safe='')}")
+        if document.getElementById(f"url-builder-filter-{panel_id}").checked:
+            filter_panels.append(panel_id)
+
+    if len(filter_panels) == PANEL_COUNT:
+        query_parts.append("filter=all")
+    elif filter_panels:
+        query_parts.append("filter=" + ",".join(str(panel_id) for panel_id in filter_panels))
+
+    return base_url + ("?" + "&".join(query_parts) if query_parts else "")
+
+
+def refresh_shared_url() -> None:
+    """URL 作成ダイアログの結果欄を最新の入力内容で更新する。"""
+    document.getElementById("url-builder-result").value = build_shared_url()
+
+
+@when("click", "#url-builder-open-btn")
+def on_url_builder_open(event) -> None:
+    """
+    「URL作成」ボタンのクリックハンドラ。結果欄を更新してダイアログをモーダル表示する。
+
+    Args:
+        event: DOM ClickEvent
+    """
+    refresh_shared_url()
+    # <dialog> のネイティブ API でモーダル表示する (Esc キーで閉じる動作もブラウザが提供する)
+    document.getElementById("url-builder-dialog").showModal()
+
+
+@when("click", "#url-builder-close-btn")
+def on_url_builder_close(event) -> None:
+    """
+    ダイアログの閉じるボタンのクリックハンドラ。
+
+    Args:
+        event: DOM ClickEvent
+    """
+    document.getElementById("url-builder-dialog").close()
+
+
+for _panel_id in range(1, PANEL_COUNT + 1):
+    when("input",  f"#url-builder-query-{_panel_id}")(lambda event: refresh_shared_url())
+    when("change", f"#url-builder-filter-{_panel_id}")(lambda event: refresh_shared_url())
+when("change", "#url-builder-source-local")(lambda event: refresh_shared_url())
+
+
+@when("click", "#url-builder-copy-btn")
+async def on_url_builder_copy(event) -> None:
+    """
+    「コピー」ボタンのクリックハンドラ。作成した URL をクリップボードへコピーする。
+
+    成功時はボタン表示を一時的に「コピーしました」に変える。
+    クリップボード API が使えない環境では結果欄を選択状態にして手動コピーを促す。
+
+    Args:
+        event: DOM ClickEvent
+    """
+    result_input = document.getElementById("url-builder-result")
+    copy_button  = document.getElementById("url-builder-copy-btn")
+    try:
+        # navigator.clipboard は HTTPS / localhost でのみ利用できる Promise ベースの API
+        await js_window.navigator.clipboard.writeText(result_input.value)
+        copy_button.textContent = "コピーしました"
+    except Exception as copy_err:
+        print(f"[警告] クリップボードへのコピーに失敗: {copy_err}")
+        # 権限制限のある環境向けに、選択状態にして旧来の execCommand でコピーを試みる
+        result_input.select()
+        if document.execCommand("copy"):
+            copy_button.textContent = "コピーしました"
+        else:
+            copy_button.textContent = "Ctrl+C でコピー"
+    await asyncio.sleep(1.5)
+    copy_button.textContent = "コピー"
+
+
 @when("click", "#reload-btn")
 async def on_reload_click(event) -> None:
     """
@@ -1131,10 +1254,10 @@ async def main() -> None:
     # URL パラメータを読み取り、起動オプションを決定する
     url_params = get_url_params()
 
-    # ?mock=1 または ?mock=true → モックデータを使用
-    use_mock = url_params.get("mock", "0").lower() in ("1", "true")
-    if use_mock:
-        print("[情報] URL パラメータ: mock=true — モックデータを使用します")
+    # ?source=local (旧名称 ?mock=1) → 同梱データを使用
+    use_local_source = is_local_source_requested(url_params)
+    if use_local_source:
+        print("[情報] URL パラメータ: source=local — 同梱データを使用します")
 
     # ?filter=all または ?filter=1,2,3 → 指定パネルのフィルターを事前有効化リストに追加
     # load_mission_rewards() がボタンを enabled にしたタイミングで実際に適用される
@@ -1149,7 +1272,7 @@ async def main() -> None:
                     if 1 <= panel_num <= PANEL_COUNT:
                         requested_filter_panels.add(panel_num)
 
-    await load_data(use_fallback=use_mock)
+    await load_data(use_fallback=use_local_source)
 
     # パラメータが1つでもあれば通知バナーを表示する
     show_param_notice(url_params)
