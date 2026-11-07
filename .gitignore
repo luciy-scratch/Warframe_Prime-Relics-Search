@@ -1,7 +1,7 @@
 .claude
 .resource
 .venv
-.WFCD_ManualAnalysis
+.data_update
 CLAUDE.md
 PROMPT.md
 pyproject.toml
