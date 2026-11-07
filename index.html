@@ -544,6 +544,66 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
        ================================================================ -->
   <script src="https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js"></script>
   <script>
+    // ---- PNG 用フォント埋め込み ----
+    // SVG foreignObject 内では Web フォントが読み込まれず、代替フォントで描画される。
+    // 文字幅・行高が変わり、バッジ内の文字が左に寄る / テーブルにスクロールバーが出る原因になる。
+    // そこで Google Fonts の CSS を自前で取得し、使用文字を含む @font-face だけを data URI 化して埋め込む。
+    let _fontFaceBlocksPromise = null;
+    const _fontDataUrlCache = new Map();
+
+    // "U+0000-00FF, U+0131, U+4??" 形式の unicode-range を [開始, 終了] の配列にする
+    function _parseUnicodeRange(rangeText) {
+      if (!rangeText) return null;  // 指定なし = 全文字が対象
+      return rangeText.split(',').map(token => {
+        const body = token.trim().replace(/^U\+/i, '');
+        if (body.includes('?')) return [parseInt(body.replace(/\?/g, '0'), 16), parseInt(body.replace(/\?/g, 'F'), 16)];
+        const [start, end] = body.split('-');
+        return [parseInt(start, 16), parseInt(end || start, 16)];
+      });
+    }
+
+    function _loadFontFaceBlocks() {
+      if (!_fontFaceBlocksPromise) {
+        _fontFaceBlocksPromise = (async () => {
+          const link = document.querySelector('link[href*="fonts.googleapis.com/css2"]');
+          if (!link) return [];
+          const cssText = await (await fetch(link.href)).text();
+          return (cssText.match(/@font-face\s*\{[^}]*\}/g) || [])
+            // イタリックは PNG に使わないため除外してサイズを抑える
+            .filter(block => !/font-style:\s*italic/.test(block))
+            .map(block => ({
+              block,
+              ranges: _parseUnicodeRange((block.match(/unicode-range:\s*([^;]+);/) || [])[1]),
+              url: (block.match(/url\((https:[^)]+)\)/) || [])[1],
+            }));
+        })();
+      }
+      return _fontFaceBlocksPromise;
+    }
+
+    async function _fetchAsDataUrl(url) {
+      if (!_fontDataUrlCache.has(url)) {
+        const blob = await (await fetch(url)).blob();
+        _fontDataUrlCache.set(url, await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        }));
+      }
+      return _fontDataUrlCache.get(url);
+    }
+
+    // element 内の文字を描画するのに必要な @font-face だけを集めた CSS 文字列を返す
+    async function _buildFontEmbedCss(element) {
+      const codePoints = [...new Set(element.textContent)].map(char => char.codePointAt(0));
+      const blocks = (await _loadFontFaceBlocks()).filter(({ ranges, url }) =>
+        url && (!ranges || codePoints.some(code => ranges.some(([start, end]) => code >= start && code <= end))));
+      const cssParts = await Promise.all(blocks.map(async ({ block, url }) =>
+        block.replace(url, await _fetchAsDataUrl(url))));
+      return cssParts.join('\n');
+    }
+
     // elementId: キャプチャ対象要素の ID 文字列 (PyScript DOM プロキシ渡しを避けるため ID で受け取る)
     window.downloadTableAsPng = async function (elementId, filename) {
       const element = document.getElementById(elementId);
@@ -551,12 +611,34 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
         console.error('[エラー] キャプチャ対象が見つかりません:', elementId);
         return;
       }
+      // 画面のレイアウトを動かさないよう、画面外に複製を置いてそれを撮影する。
+      // 複製ではテーブル枠の overflow を解除し、幅は内容に合わせて広げる (スクロールバー・見切れの防止)。
+      const stage = document.createElement('div');
+      // 幅は画面表示と同じにする (max-content にするとバッジの折り返しがなくなり極端に横長になる)
+      stage.style.cssText = `position:fixed;left:-100000px;top:0;width:${element.offsetWidth}px;`;
+      const clone = element.cloneNode(true);
+      clone.removeAttribute('id');
+      clone.querySelectorAll('.overflow-x-auto').forEach(node => { node.style.overflow = 'visible'; });
+      stage.appendChild(clone);
+      document.body.appendChild(stage);
+      // 画面では横スクロールになっていた場合のみ、テーブルが収まるよう幅を広げる
+      // (scrollWidth は右側の padding を含まないため、p-3 の 12px を足す)
+      if (clone.scrollWidth > clone.clientWidth) {
+        clone.style.width = (clone.scrollWidth + 12) + 'px';
+      }
       try {
-        const dataUrl = await htmlToImage.toPng(element, {
+        const options = {
           backgroundColor: '#ffffff',
           pixelRatio: 2,      // 2x 解像度で Retina 対応
-          skipFonts: true,    // Google Fonts / PyScript CDN の cssRules CORS エラーを回避
-        });
+        };
+        try {
+          options.fontEmbedCSS = await _buildFontEmbedCss(element);
+        } catch (fontErr) {
+          // フォント取得に失敗しても画像自体は出力する (代替フォントで描画される)
+          console.warn('[警告] フォント埋め込みに失敗。代替フォントで出力します:', fontErr);
+          options.skipFonts = true;
+        }
+        const dataUrl = await htmlToImage.toPng(clone, options);
         const link = document.createElement('a');
         link.download = filename + '.png';
         link.href = dataUrl;
@@ -565,6 +647,8 @@ Warframe - Prime Relics Search V9.99.99.99.99....(バージョニングなんて
         document.body.removeChild(link);
       } catch (err) {
         console.error('[エラー] PNG 生成失敗:', err);
+      } finally {
+        document.body.removeChild(stage);
       }
     };
 

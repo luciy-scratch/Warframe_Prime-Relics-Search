@@ -529,13 +529,13 @@ def render_relic_badge(relic_info: dict, large: bool = False) -> str:
     if large:
         # セル内に1件だけの場合: フォントサイズ・パディングを拡大して視認性を向上
         return (
-            f'<span{title_attr} class="inline-flex items-center border-2 rounded-lg px-4 py-2 '
+            f'<span{title_attr} class="inline-flex items-center justify-center border-2 rounded-lg px-4 py-2 '
             f'text-xl font-ui-badge font-semibold tracking-wide whitespace-nowrap {css_classes}">'
             f'{icons_html}{display}'
             f'</span>'
         )
     return (
-        f'<span{title_attr} class="inline-flex items-center border rounded px-2 py-1 '
+        f'<span{title_attr} class="inline-flex items-center justify-center border rounded px-2 py-1 '
         f'text-sm font-ui-badge font-medium tracking-wide whitespace-nowrap mr-1 mb-1 {css_classes}">'
         f'{icons_html}{display}'
         f'</span>'
