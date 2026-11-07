@@ -32,7 +32,7 @@ DROP_TABLE_URL: str = "https://drops.warframestat.us/data/relics.json"
 
 # フォールバック: API 取得失敗時 / ?source=local 時に使用する同梱データ
 # warframe-drop-data リポジトリで生成した relics.json を配置する
-FALLBACK_URL: str = "./data_mock_relics.json"
+FALLBACK_URL: str = "./local_relics.json"
 
 # ミッション報酬データ (現行ドロップフィルター用)
 # 構造: missionRewards → Planet → Node → rewards → Rotation[] → itemName
@@ -40,7 +40,7 @@ MISSION_REWARDS_URL: str = "https://drops.warframestat.us/data/missionRewards.js
 
 # ミッション報酬フォールバック: API 取得失敗時 / ?source=local 時に使用する同梱データ
 # warframe-drop-data リポジトリで生成した missionRewards.json を配置する
-MISSION_REWARDS_FALLBACK_URL: str = "./data_mock_mission_rewards.json"
+MISSION_REWARDS_FALLBACK_URL: str = "./local_mission_rewards.json"
 
 # ミッション報酬 JSON のレリック名抽出パターン
 # 例: "Lith Q3 Relic" → tier="Lith", name="Q3" → displayName="Lith Q3"
@@ -411,7 +411,7 @@ async def load_mission_rewards(use_fallback: bool = False) -> None:
     取得失敗時はログ出力のみ行い、フィルター機能を無効のままにする。
 
     Args:
-        use_fallback (bool): True の場合、同梱データ (data_mock_mission_rewards.json) を使用する
+        use_fallback (bool): True の場合、同梱データ (local_mission_rewards.json) を使用する
     """
     global mission_relic_set
 
@@ -954,7 +954,7 @@ async def load_data(use_fallback: bool = False) -> None:
     それも失敗した場合のみエラー状態を表示する。
 
     Args:
-        use_fallback (bool): True の場合、同梱データ (data_mock.json) を使用する
+        use_fallback (bool): True の場合、同梱データ (local_relics.json) を使用する
     """
     global prime_index, all_prime_items
 
