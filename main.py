@@ -113,6 +113,10 @@ HIGHLIGHT_ITEMS: dict[str, dict[str, str]] = {
         "icon":    "./highlight_items/prime_guard_128x128.webp",
         "tooltip": "沼",
     },
+    "Silva & Aegis Prime Guard": {
+        "icon":    "./highlight_items/prime_guard_128x128.webp",
+        "tooltip"  "間違えて入った沼",
+    }
 }
 
 # 画像として扱うアイコン文字列の判定用拡張子
